@@ -39,6 +39,8 @@
 //---------------------------------------------------------------------------
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RabbitMQ.Client.Events
 {
@@ -46,10 +48,13 @@ namespace RabbitMQ.Client.Events
     ///methods as separate events.</summary>
     public class EventingBasicConsumer : DefaultBasicConsumer
     {
+        private readonly SemaphoreSlim _semaphore;
+
         ///<summary>Constructor which sets the Model property to the
         ///given value.</summary>
         public EventingBasicConsumer(IModel model) : base(model)
         {
+            _semaphore = new SemaphoreSlim(model.ProcessingConcurrency);
         }
 
         ///<summary>
@@ -72,16 +77,16 @@ namespace RabbitMQ.Client.Events
         public event EventHandler<ConsumerEventArgs> Unregistered;
 
         ///<summary>Fires when the server confirms successful consumer cancelation.</summary>
-        public override void HandleBasicCancelOk(string consumerTag)
+        public override async ValueTask HandleBasicCancelOk(string consumerTag)
         {
-            base.HandleBasicCancelOk(consumerTag);
+            await base.HandleBasicCancelOk(consumerTag).ConfigureAwait(false);
             Unregistered?.Invoke(this, new ConsumerEventArgs(new[] { consumerTag }));
         }
 
         ///<summary>Fires when the server confirms successful consumer cancelation.</summary>
-        public override void HandleBasicConsumeOk(string consumerTag)
+        public override async ValueTask HandleBasicConsumeOk(string consumerTag)
         {
-            base.HandleBasicConsumeOk(consumerTag);
+            await base.HandleBasicConsumeOk(consumerTag).ConfigureAwait(false);
             Registered?.Invoke(this, new ConsumerEventArgs(new[] { consumerTag }));
         }
 
@@ -93,18 +98,35 @@ namespace RabbitMQ.Client.Events
         /// Accessing the body at a later point is unsafe as its memory can
         /// be already released.
         /// </remarks>
-        public override void HandleBasicDeliver(string consumerTag, ulong deliveryTag, bool redelivered, string exchange, string routingKey, IBasicProperties properties, ReadOnlyMemory<byte> body)
+        public override async ValueTask HandleBasicDeliver(string consumerTag, ulong deliveryTag, bool redelivered, string exchange, string routingKey, IBasicProperties properties, ReadOnlyMemory<byte> body)
         {
-            base.HandleBasicDeliver(consumerTag, deliveryTag, redelivered, exchange, routingKey, properties, body);
-            Received?.Invoke(
-                this,
-                new BasicDeliverEventArgs(consumerTag, deliveryTag, redelivered, exchange, routingKey, properties, body));
+            if (!_semaphore.Wait(0))
+            {
+                await _semaphore.WaitAsync().ConfigureAwait(false);
+            }
+
+            _ = ExecuteEventHandler(consumerTag, deliveryTag, redelivered, exchange, routingKey, properties, body).ConfigureAwait(false);
+        }
+
+        private async Task ExecuteEventHandler(string consumerTag, ulong deliveryTag, bool redelivered, string exchange, string routingKey, IBasicProperties properties, ReadOnlyMemory<byte> body)
+        {
+            try
+            {
+                await base.HandleBasicDeliver(consumerTag, deliveryTag, redelivered, exchange, routingKey, properties, body).ConfigureAwait(false);
+                Received?.Invoke(
+                    this,
+                    new BasicDeliverEventArgs(consumerTag, deliveryTag, redelivered, exchange, routingKey, properties, body));
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
         }
 
         ///<summary>Fires the Shutdown event.</summary>
-        public override void HandleModelShutdown(object model, ShutdownEventArgs reason)
+        public override async ValueTask HandleModelShutdown(object model, ShutdownEventArgs reason)
         {
-            base.HandleModelShutdown(model, reason);
+            await base.HandleModelShutdown(model, reason).ConfigureAwait(false);
             Shutdown?.Invoke(this, reason);
         }
     }

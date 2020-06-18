@@ -52,31 +52,35 @@ namespace RabbitMQ.Client.Unit
     [TestFixture]
     public class TestAsyncConsumer
     {
+        static IDisposable networkSubscription = null;
+        static IDisposable listenerSubscription = null;
+
         [Test]
-        public void TestBasicRoundtrip()
+        public async ValueTask TestBasicRoundtrip()
         {
             var cf = new ConnectionFactory{ DispatchConsumersAsync = true };
-            using(IConnection c = cf.CreateConnection())
-            using(IModel m = c.CreateModel())
+            cf.ClientProvidedName = this.GetType().Name;
+            using(IConnection c = await cf.CreateConnection())
+            using(IModel m = await c.CreateModel())
             {
-                QueueDeclareOk q = m.QueueDeclare();
+                QueueDeclareOk q = await m.QueueDeclare(Guid.NewGuid().ToString());
                 IBasicProperties bp = m.CreateBasicProperties();
                 byte[] body = System.Text.Encoding.UTF8.GetBytes("async-hi");
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicPublish("", q.QueueName, bp, body);
                 var consumer = new AsyncEventingBasicConsumer(m);
                 var are = new AutoResetEvent(false);
-                consumer.Received += async (o, a) =>
+                consumer.Received += (o, a) =>
                     {
                         are.Set();
-                        await Task.Yield();
+                        return default;
                     };
-                string tag = m.BasicConsume(q.QueueName, true, consumer);
+                string tag = await m.BasicConsume(q.QueueName, true, consumer);
                 // ensure we get a delivery
                 bool waitRes = are.WaitOne(2000);
                 Assert.IsTrue(waitRes);
                 // unsubscribe and ensure no further deliveries
-                m.BasicCancel(tag);
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicCancel(tag);
+                await m.BasicPublish("", q.QueueName, bp, body);
                 bool waitResFalse = are.WaitOne(2000);
                 Assert.IsFalse(waitResFalse);
             }
@@ -86,17 +90,17 @@ namespace RabbitMQ.Client.Unit
         public async Task TestBasicRoundtripConcurrent()
         {
             var cf = new ConnectionFactory{ DispatchConsumersAsync = true, ProcessingConcurrency = 2 };
-            using(IConnection c = cf.CreateConnection())
-            using(IModel m = c.CreateModel())
+            using(IConnection c = await cf.CreateConnection())
+            using(IModel m = await c.CreateModel())
             {
-                QueueDeclareOk q = m.QueueDeclare();
+                QueueDeclareOk q = await m.QueueDeclare();
                 IBasicProperties bp = m.CreateBasicProperties();
                 const string publish1 = "async-hi-1";
                 var body = Encoding.UTF8.GetBytes(publish1);
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicPublish("", q.QueueName, bp, body);
                 const string publish2 = "async-hi-2";
                 body = Encoding.UTF8.GetBytes(publish2);
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicPublish("", q.QueueName, bp, body);
 
                 var consumer = new AsyncEventingBasicConsumer(m);
 
@@ -125,7 +129,7 @@ namespace RabbitMQ.Client.Unit
                     }
                 };
 
-                m.BasicConsume(q.QueueName, true, consumer);
+                await m.BasicConsume(q.QueueName, true, consumer);
                 // ensure we get a delivery
 
                 await Task.WhenAll(publish1SyncSource.Task, publish2SyncSource.Task);
@@ -136,50 +140,35 @@ namespace RabbitMQ.Client.Unit
         }
 
         [Test]
-        public void TestBasicRoundtripNoWait()
+        public async Task TestBasicRoundtripNoWait()
         {
             var cf = new ConnectionFactory{ DispatchConsumersAsync = true };
-            using (IConnection c = cf.CreateConnection())
+            cf.ClientProvidedName = this.GetType().Name;
+            using (IConnection c = await cf.CreateConnection())
             {
-                using (IModel m = c.CreateModel())
+                using (IModel m = await c.CreateModel())
                 {
-                    QueueDeclareOk q = m.QueueDeclare();
+                    QueueDeclareOk q = await m.QueueDeclare(Guid.NewGuid().ToString());
                     IBasicProperties bp = m.CreateBasicProperties();
                     byte[] body = System.Text.Encoding.UTF8.GetBytes("async-hi");
-                    m.BasicPublish("", q.QueueName, bp, body);
+                    await m.BasicPublish("", q.QueueName, bp, body);
                     var consumer = new AsyncEventingBasicConsumer(m);
                     var are = new AutoResetEvent(false);
-                    consumer.Received += async (o, a) =>
+                    consumer.Received += (o, a) =>
                         {
                             are.Set();
-                            await Task.Yield();
+                            return default;
                         };
-                    string tag = m.BasicConsume(q.QueueName, true, consumer);
+                    string tag = await m.BasicConsume(q.QueueName, true, consumer);
                     // ensure we get a delivery
                     bool waitRes = are.WaitOne(2000);
                     Assert.IsTrue(waitRes);
                     // unsubscribe and ensure no further deliveries
-                    m.BasicCancelNoWait(tag);
-                    m.BasicPublish("", q.QueueName, bp, body);
+                    await m.BasicCancelNoWait(tag);
+                    await m.BasicPublish("", q.QueueName, bp, body);
                     bool waitResFalse = are.WaitOne(2000);
                     Assert.IsFalse(waitResFalse);
                 }
-            }
-        }
-
-        [Test]
-        public void NonAsyncConsumerShouldThrowInvalidOperationException()
-        {
-            var cf = new ConnectionFactory{ DispatchConsumersAsync = true };
-            using(IConnection c = cf.CreateConnection())
-            using(IModel m = c.CreateModel())
-            {
-                QueueDeclareOk q = m.QueueDeclare();
-                IBasicProperties bp = m.CreateBasicProperties();
-                byte[] body = System.Text.Encoding.UTF8.GetBytes("async-hi");
-                m.BasicPublish("", q.QueueName, bp, body);
-                var consumer = new EventingBasicConsumer(m);
-                Assert.Throws<InvalidOperationException>(() => m.BasicConsume(q.QueueName, false, consumer));
             }
         }
     }

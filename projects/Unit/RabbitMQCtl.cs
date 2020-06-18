@@ -48,6 +48,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RabbitMQ.Client.Unit
 {
@@ -222,18 +223,18 @@ namespace RabbitMQ.Client.Unit
         // Flow Control
         //
 
-        public static void Block(IConnection conn, Encoding encoding)
+        public static async ValueTask Block(IConnection conn, Encoding encoding)
         {
             ExecRabbitMQCtl("set_vm_memory_high_watermark 0.000000001");
             // give rabbitmqctl some time to do its job
-            Thread.Sleep(1200);
-            Publish(conn, encoding);
+            await Task.Delay(1200);
+            await Publish(conn, encoding);
         }
 
-        public static void Publish(IConnection conn, Encoding encoding)
+        public static async ValueTask Publish(IConnection conn, Encoding encoding)
         {
-            IModel ch = conn.CreateModel();
-            ch.BasicPublish("amq.fanout", "", null, encoding.GetBytes("message"));
+            IModel ch = await conn.CreateModel();
+            await ch.BasicPublish("amq.fanout", "", null, encoding.GetBytes("message"));
         }
 
 

@@ -14,17 +14,17 @@ namespace RabbitMQ.Client.Unit
         public async Task TestBasicRoundtripConcurrent()
         {
             var cf = new ConnectionFactory{ ProcessingConcurrency = 2 };
-            using(IConnection c = cf.CreateConnection())
-            using(IModel m = c.CreateModel())
+            using(IConnection c = await cf.CreateConnection())
+            using(IModel m = await c.CreateModel())
             {
-                QueueDeclareOk q = m.QueueDeclare();
+                QueueDeclareOk q = await m.QueueDeclare();
                 IBasicProperties bp = m.CreateBasicProperties();
                 const string publish1 = "sync-hi-1";
                 var body = Encoding.UTF8.GetBytes(publish1);
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicPublish("", q.QueueName, bp, body);
                 const string publish2 = "sync-hi-2";
                 body = Encoding.UTF8.GetBytes(publish2);
-                m.BasicPublish("", q.QueueName, bp, body);
+                await m.BasicPublish("", q.QueueName, bp, body);
 
                 var consumer = new EventingBasicConsumer(m);
 
@@ -53,7 +53,7 @@ namespace RabbitMQ.Client.Unit
                     }
                 };
 
-                m.BasicConsume(q.QueueName, true, consumer);
+                await m.BasicConsume(q.QueueName, true, consumer);
 
                 await Task.WhenAll(publish1SyncSource.Task, publish2SyncSource.Task);
 
