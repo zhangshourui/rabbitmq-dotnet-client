@@ -507,26 +507,6 @@ namespace RabbitMQ.Client.Impl
             return EnqueueAsync(cmd, timeout);
         }
 
-        public ValueTask<T> TransmitAndEnqueueAsync<T>(Command cmd, TimeSpan timeout = default) where T : MethodBase
-        {
-            if (cmd.Method.ProtocolClassId != ClassConstants.Channel && cmd.Method.ProtocolMethodId != ChannelMethodConstants.Close && CloseReason != null)
-            {
-                throw new AlreadyClosedException(CloseReason);
-            }
-
-            return EnqueueAsync<T>(cmd, timeout);
-        }
-
-        public ValueTask<Command> TransmitAndEnqueueAsync(Command cmd, TimeSpan timeout = default)
-        {
-            if(cmd.Method.ProtocolClassId != ClassConstants.Channel && cmd.Method.ProtocolMethodId != ChannelMethodConstants.Close && CloseReason != null)
-            {
-                throw new AlreadyClosedException(CloseReason);
-            }
-
-            return EnqueueAsync(cmd, timeout);
-        }
-
         void IDisposable.Dispose()
         {
             Dispose(true);
