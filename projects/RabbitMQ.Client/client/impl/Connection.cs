@@ -102,14 +102,9 @@ namespace RabbitMQ.Client.Framing.Impl
             _factory = factory;
             _frameHandler = frameHandler;
 
-            if (factory is IAsyncConnectionFactory asyncConnectionFactory && asyncConnectionFactory.DispatchConsumersAsync)
-            {
-                ConsumerWorkService = new AsyncConsumerWorkService(factory.ConsumerDispatchConcurrency);
-            }
-            else
-            {
-                ConsumerWorkService = new ConsumerWorkService(factory.ConsumerDispatchConcurrency);
-            }
+            ConsumerWorkService = factory.DispatchConsumersAsync
+                ? new AsyncConsumerWorkService(factory.ConsumerDispatchConcurrency)
+                : new ConsumerWorkService(factory.ConsumerDispatchConcurrency);
 
             _sessionManager = new SessionManager(this, 0);
             _session0 = new MainSession(this) { Handler = NotifyReceivedCloseOk };
@@ -124,6 +119,7 @@ namespace RabbitMQ.Client.Framing.Impl
         public event EventHandler<CallbackExceptionEventArgs> CallbackException;
 
         public event EventHandler<ConnectionBlockedEventArgs> ConnectionBlocked;
+        public event EventHandler<EventArgs> ConnectionUnblocked;
 
         public event EventHandler<ShutdownEventArgs> ConnectionShutdown
         {
@@ -154,10 +150,37 @@ namespace RabbitMQ.Client.Framing.Impl
             }
         }
 
-        
+        /// <summary>
+        /// This event is never fired by non-recovering connections but it is a part of the <see cref="IConnection"/> interface.
+        /// </summary>
+        public event EventHandler<EventArgs> RecoverySucceeded {
+            add { }
+            remove { }
+        }
 
-        public event EventHandler<EventArgs> ConnectionUnblocked;
+        /// <summary>
+        /// This event is never fired by non-recovering connections but it is a part of the <see cref="IConnection"/> interface.
+        /// </summary>
+        public event EventHandler<ConnectionRecoveryErrorEventArgs> ConnectionRecoveryError {
+            add { }
+            remove { }
+        }
 
+        /// <summary>
+        /// This event is never fired by non-recovering connections but it is a part of the <see cref="IConnection"/> interface.
+        /// </summary>
+        public event EventHandler<ConsumerTagChangedAfterRecoveryEventArgs> ConsumerTagChangeAfterRecovery {
+            add { }
+            remove { }
+        }
+
+        /// <summary>
+        /// This event is never fired by non-recovering connections but it is a part of the <see cref="IConnection"/> interface.
+        /// </summary>
+        public event EventHandler<QueueNameChangedAfterRecoveryEventArgs> QueueNameChangeAfterRecovery {
+            add { }
+            remove { }
+        }
 
         public string ClientProvidedName { get; }
 
